@@ -29,19 +29,22 @@ namespace Microsoft.AspNet.Mvc
             });
 
         private static readonly MethodInfo _convertArrayMethodInfo = typeof(SessionStateTempDataProvider).GetMethod(
-            nameof(ConvertArray), BindingFlags.NonPublic | BindingFlags.Static, null, new[] { typeof(JArray) }, null);
+            nameof(ConvertArray), BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly MethodInfo _convertDictMethodInfo = typeof(SessionStateTempDataProvider).GetMethod(
+            nameof(ConvertDict), BindingFlags.Static | BindingFlags.NonPublic);
 
-        private readonly ConcurrentDictionary<Type, Func<JArray, object>> _arrayConverters =
+        private static readonly ConcurrentDictionary<Type, Func<JArray, object>> _arrayConverters =
             new ConcurrentDictionary<Type, Func<JArray, object>>();
+        private static readonly ConcurrentDictionary<Type, Func<JObject, object>> _dictConverters =
+            new ConcurrentDictionary<Type, Func<JObject, object>>();
 
-        private static Dictionary<JTokenType, Type> _arrayTypeLookup = new Dictionary<JTokenType, Type>
+        private static readonly Dictionary<JTokenType, Type> _tokenTypeLookup = new Dictionary<JTokenType, Type>
         {
             { JTokenType.String, typeof(string) },
             { JTokenType.Integer, typeof(int) },
             { JTokenType.Boolean, typeof(bool) },
             { JTokenType.Float, typeof(float) },
             { JTokenType.Guid, typeof(Guid) },
-            { JTokenType.Object, typeof(object) },
             { JTokenType.Date, typeof(DateTime) },
             { JTokenType.TimeSpan, typeof(TimeSpan) },
             { JTokenType.Uri, typeof(Uri) },
@@ -67,26 +70,59 @@ namespace Microsoft.AspNet.Mvc
                 {
                     tempDataDictionary = _jsonSerializer.Deserialize<Dictionary<string, object>>(writer);
                 }
-                foreach (var item in tempDataDictionary.ToList())
+
+                var convertedDictionary = new Dictionary<string, object>(tempDataDictionary, StringComparer.OrdinalIgnoreCase);
+                foreach (var item in tempDataDictionary)
                 {
                     var jArrayValue = item.Value as JArray;
                     if (jArrayValue != null && jArrayValue.Count > 0)
                     {
-                        Type returnType = null;
-                        _arrayTypeLookup.TryGetValue(jArrayValue[0].Type, out returnType);
-                        if (returnType != null)
+                        Type returnType;
+                        if (_tokenTypeLookup.TryGetValue(jArrayValue[0].Type, out returnType))
                         {
                             var arrayConverter = _arrayConverters.GetOrAdd(returnType, type =>
                             {
-                                return (Func<JArray, object>)Delegate.CreateDelegate(typeof(Func<JArray, object>),
-                                    _convertArrayMethodInfo.MakeGenericMethod(type));
+                                return (Func<JArray, object>)_convertArrayMethodInfo.MakeGenericMethod(type).CreateDelegate(typeof(Func<JArray, object>));
                             });
                             var result = arrayConverter(jArrayValue);
 
-                            tempDataDictionary[item.Key] = result;
+                            convertedDictionary[item.Key] = result;
+                        }
+                        else
+                        {
+                            var message = Resources.FormatTempData_CannotDeserializeToken(jArrayValue[0].Type);
+                            throw new InvalidOperationException(message);
+                        }
+                    }
+                    else
+                    {
+                        var jObjectValue = item.Value as JObject;
+                        if (jObjectValue == null || !jObjectValue.HasValues)
+                        {
+                            continue;
+                        }
+
+                        var jTokenType = jObjectValue.Properties().First().Value.Type;
+                        Type valueType;
+                        if (_tokenTypeLookup.TryGetValue(jTokenType, out valueType))
+                        {
+                            var dictConverter = _dictConverters.GetOrAdd(valueType, type =>
+                            {
+                                return (Func<JObject, object>)_convertDictMethodInfo.MakeGenericMethod(type).CreateDelegate(typeof(Func<JObject, object>));
+                            });
+                            var result = dictConverter(jObjectValue);
+
+                            convertedDictionary[item.Key] = result;
+                        }
+                        else
+                        {
+                            var message = Resources.FormatTempData_CannotDeserializeToken(jTokenType);
+                            throw new InvalidOperationException(message);
                         }
                     }
                 }
+
+                tempDataDictionary = convertedDictionary;
 
                 // If we got it from Session, remove it so that no other request gets it
                 session.Remove(TempDataSessionStateKey);
@@ -146,13 +182,22 @@ namespace Microsoft.AspNet.Mvc
             }
             else if (itemType.GetTypeInfo().IsGenericType)
             {
-                if (itemType.ExtractGenericInterface(typeof(IList<>)) != null)
+                if (itemType.ExtractGenericInterface(typeof(IList<>)) != null ||
+                    itemType.ExtractGenericInterface(typeof(IDictionary<,>)) != null)
                 {
                     actualTypes = itemType.GetGenericArguments();
                 }
             }
 
             actualTypes = actualTypes ?? new Type[] { itemType };
+
+            // Throw if the key type of the dictionary is not string.
+            if (actualTypes.Length > 1 && actualTypes[0] != typeof(string))
+            {
+                var message = Resources.FormatTempData_CannotSerializeDictionary(actualTypes[0],
+                        typeof(SessionStateTempDataProvider).FullName);
+                throw new InvalidOperationException(message);
+            }
 
             foreach (var actualType in actualTypes)
             {
@@ -169,6 +214,16 @@ namespace Microsoft.AspNet.Mvc
         private static IList<TVal> ConvertArray<TVal>(JArray array)
         {
             return array.Values<TVal>().ToArray();
+        }
+
+        private static IDictionary<string, T> ConvertDict<T>(JObject jObject)
+        {
+            var convertedDict = new Dictionary<string, T>();
+            foreach (var item in jObject)
+            {
+                convertedDict.Add(item.Key, jObject.Value<T>(item.Key));
+            }
+            return convertedDict;
         }
     }
 }

@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using Microsoft.AspNet.Http;
 using Moq;
@@ -86,11 +87,7 @@ namespace Microsoft.AspNet.Mvc
                     { new object[3], typeof(object) },
                     { new TestItem(), typeof(TestItem) },
                     { new List<TestItem>(), typeof(TestItem) },
-                    { new Dictionary<string, int>(), typeof(Dictionary<string, int>) },
-                    { new Dictionary<Uri, Guid>(), typeof(Dictionary<Uri, Guid>) },
-                    { new Dictionary<string, TestItem>(), typeof(Dictionary<string, TestItem>) },
-                    { new Dictionary<object, string>(), typeof(Dictionary<object, string>) },
-                    { new Dictionary<TestItem, TestItem>(), typeof(Dictionary<TestItem, TestItem>) }
+                    { new Dictionary<string, TestItem>(), typeof(TestItem) },
                 };
             }
         }
@@ -111,6 +108,36 @@ namespace Microsoft.AspNet.Mvc
                 exception.Message);
         }
 
+        public static TheoryData<object, Type> InvalidDictionaryTypes
+        {
+            get
+            {
+                return new TheoryData<object, Type>
+                {
+                    { new Dictionary<int, string>(), typeof(int) },
+                    { new Dictionary<Uri, Guid>(), typeof(Uri) },
+                    { new Dictionary<object, string>(), typeof(object) },
+                    { new Dictionary<TestItem, TestItem>(), typeof(TestItem) }
+                };
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(InvalidDictionaryTypes))]
+        public void EnsureObjectCanBeSerialized_InvalidDictionaryType_Throws(object value, Type type)
+        {
+            // Arrange
+            var testProvider = new SessionStateTempDataProvider();
+
+            // Act & Assert
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+            {
+                testProvider.EnsureObjectCanBeSerialized(value);
+            });
+            Assert.Equal($"The dictionary with TKey {type} cannot be serialized to Session by '{typeof(SessionStateTempDataProvider).FullName}'.",
+                exception.Message);
+        }
+
         public static TheoryData<object> ValidTypes
         {
             get
@@ -125,6 +152,7 @@ namespace Microsoft.AspNet.Mvc
                     { new List<string> { "foo", "bar" } },
                     { new DateTimeOffset() },
                     { 100.1m },
+                    { new Dictionary<string, int>() },
                     { new Uri[] { new Uri("http://Foo"), new Uri("http://Bar") } }
                 };
             }
@@ -139,6 +167,47 @@ namespace Microsoft.AspNet.Mvc
 
             // Act & Assert (Does not throw)
             testProvider.EnsureObjectCanBeSerialized(value);
+        }
+
+        [Fact]
+        public void SaveAndLoad_WorksAsExpected()
+        {
+            // Arrange
+            var testProvider = new SessionStateTempDataProvider();
+            var inputGuid = Guid.NewGuid();
+            var inputDict = new Dictionary<string, string>
+            {
+                { "Hello", "World" },
+            };
+            var input = new Dictionary<string, object>
+            {
+                { "string", "value" },
+                { "int", 10 },
+                { "bool", false },
+                { "DateTime", new DateTime() },
+                { "Guid", inputGuid },
+                { "List`string", new List<string> { "one", "two" } },
+                { "Dictionary", inputDict },
+            };
+            var context = GetHttpContext(new TestSessionCollection(), true);
+
+            // Act
+            //System.Diagnostics.Debugger.Launch();
+            testProvider.SaveTempData(context, input);
+            var TempData = testProvider.LoadTempData(context);
+
+            // Assert
+            Assert.Equal("value", TempData["string"]);
+            Assert.Equal(10, Convert.ToInt32(TempData["int"]));
+            Assert.Equal(false, (bool)TempData["bool"]);
+            Assert.Equal(new DateTime().ToString(), ((DateTime)TempData["DateTime"]).ToString());
+            Assert.Equal(inputGuid.ToString(), ((Guid)TempData["Guid"]).ToString());
+            var list = (IList<string>)TempData["List`string"];
+            Assert.Equal(2, list.Count);
+            Assert.Equal("one", list[0]);
+            Assert.Equal("two", list[1]);
+            var dict = (IDictionary<string, string>)TempData["Dictionary"];
+            Assert.Equal("World", dict["Hello"]);
         }
 
         private class TestItem
@@ -157,12 +226,63 @@ namespace Microsoft.AspNet.Mvc
             {
                 httpContext.Setup(h => h.Session).Throws<InvalidOperationException>();
             }
+            else
+            {
+                httpContext.Setup(h => h.Session[It.IsAny<string>()]);
+            }
             if (sessionEnabled)
             {
                 httpContext.Setup(h => h.GetFeature<ISessionFeature>()).Returns(Mock.Of<ISessionFeature>());
-                httpContext.Setup(h => h.Session[It.IsAny<string>()]);
             }
             return httpContext.Object;
+        }
+
+        private class TestSessionCollection : ISessionCollection
+        {
+            private Dictionary<string, byte[]> _innerDict = new Dictionary<string, byte[]>();
+
+            public byte[] this[string key]
+            {
+                get
+                {
+                    return _innerDict[key];
+                }
+
+                set
+                {
+                    _innerDict[key] = value;
+                }
+            }
+
+            public void Clear()
+            {
+                _innerDict.Clear();
+            }
+
+            public IEnumerator<KeyValuePair<string, byte[]>> GetEnumerator()
+            {
+                return _innerDict.GetEnumerator();
+            }
+
+            public void Remove(string key)
+            {
+                _innerDict.Remove(key);
+            }
+
+            public void Set(string key, ArraySegment<byte> value)
+            {
+                _innerDict[key] = value.AsArray();
+            }
+
+            public bool TryGetValue(string key, out byte[] value)
+            {
+                return _innerDict.TryGetValue(key, out value);
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return _innerDict.GetEnumerator();
+            }
         }
     }
 }

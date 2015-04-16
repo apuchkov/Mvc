@@ -1754,6 +1754,38 @@ namespace Microsoft.AspNet.Mvc.Core
             return string.Format(CultureInfo.CurrentCulture, GetString("TempData_CannotSerializeToSession"), p0, p1);
         }
 
+        /// <summary>
+        /// Cannot deserialize JToken of type {0}.
+        /// </summary>
+        internal static string TempData_CannotDeserializeToken
+        {
+            get { return GetString("TempData_CannotDeserializeToken"); }
+        }
+
+        /// <summary>
+        /// Cannot deserialize JToken of type {0}.
+        /// </summary>
+        internal static string FormatTempData_CannotDeserializeToken(object p0)
+        {
+            return string.Format(CultureInfo.CurrentCulture, GetString("TempData_CannotDeserializeToken"), p0);
+        }
+
+        /// <summary>
+        /// The dictionary with TKey {0} cannot be serialized to Session by '{1}'.
+        /// </summary>
+        internal static string TempData_CannotSerializeDictionary
+        {
+            get { return GetString("TempData_CannotSerializeDictionary"); }
+        }
+
+        /// <summary>
+        /// The dictionary with TKey {0} cannot be serialized to Session by '{1}'.
+        /// </summary>
+        internal static string FormatTempData_CannotSerializeDictionary(object p0, object p1)
+        {
+            return string.Format(CultureInfo.CurrentCulture, GetString("TempData_CannotSerializeDictionary"), p0, p1);
+        }
+
         private static string GetString(string name, params string[] formatterNames)
         {
             var value = _resourceManager.GetString(name);

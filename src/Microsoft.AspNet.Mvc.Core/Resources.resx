@@ -454,4 +454,10 @@
   <data name="TempData_CannotSerializeToSession" xml:space="preserve">
     <value>The type {0} cannot be serialized to Session by '{1}'.</value>
   </data>
+  <data name="TempData_CannotDeserializeToken" xml:space="preserve">
+    <value>Cannot deserialize JToken of type {0}.</value>
+  </data>
+  <data name="TempData_CannotSerializeDictionary" xml:space="preserve">
+    <value>The dictionary with TKey {0} cannot be serialized to Session by '{1}'.</value>
+  </data>
 </root>
