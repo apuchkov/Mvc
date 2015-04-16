@@ -3,15 +3,17 @@
 
 using System;
 using Microsoft.AspNet.Mvc;
+using Microsoft.AspNet.Mvc.Razor;
 using Microsoft.Framework.OptionsModel;
 
 namespace Microsoft.AspNet.Mvc.Core
 {
-    public class TestMockMvcOptionsAccessor : IOptions<MvcOptions>
+    public class TestMvcOptions : IOptions<MvcOptions>
     {
-        public TestMockMvcOptionsAccessor()
+        public TestMvcOptions()
         {
             Options = new MvcOptions();
+            MvcOptionsSetup.ConfigureMvc(Options);
         }
 
         public MvcOptions Options { get; }

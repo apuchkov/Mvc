@@ -14,7 +14,6 @@ using Microsoft.AspNet.Http.Core;
 using Microsoft.AspNet.Mvc.Core;
 using Microsoft.AspNet.Mvc.ModelBinding.Validation;
 using Microsoft.AspNet.Routing;
-using Moq;
 using Xunit;
 
 namespace Microsoft.AspNet.Mvc.ModelBinding.Test
@@ -36,7 +35,8 @@ namespace Microsoft.AspNet.Mvc.ModelBinding.Test
         [Fact]
         public async Task BodyBoundOnProperty_RequiredOnProperty()
         {
-            var argumentBinder = GetArgumentBinder();
+            // Arrange
+            var argumentBinder = IntegrationTestHelper.GetArgumentBinder();
             var parameter = new ParameterDescriptor()
             {
                 Name = "Parameter1",
@@ -47,96 +47,131 @@ namespace Microsoft.AspNet.Mvc.ModelBinding.Test
                 ParameterType = typeof(Person)
             };
 
-            var operationContext = new OperationBindingContext()
-            {
-                BodyBindingState = BodyBindingState.NotBodyBased,
-                HttpContext = GetHttpContext(string.Empty),
-                MetadataProvider = TestModelMetadataProvider.CreateDefaultProvider(),
-                ValidatorProvider = TestModelValidatorProvider.CreateDefaultProvider(),
-                ValueProvider = new TestValueProvider(new Dictionary<string, object>()),
-                ModelBinder  = TestModelBinderProvider.CreateDefaultModelBinder()
-            };
-
+            var operationContext = IntegrationTestHelper.GetOperationBindingContext();
+            var httpContext = operationContext.HttpContext;
+            ConfigureHttpRequest(httpContext.Request, string.Empty);
             var modelState = new ModelStateDictionary();
+
+            // Act
             var model = await argumentBinder.BindModelAsync(parameter, modelState, operationContext);
 
-            Assert.Equal("", modelState["Address"].Errors.Single().ErrorMessage);
+            // Assert
+            Assert.Equal("The Address field is required.", modelState[""].Errors.Single().ErrorMessage);
         }
 
-        private HttpContext GetHttpContext(string jsonContent)
+        private class Person2
         {
-            var httpContext = new DefaultHttpContext();
-            httpContext.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(jsonContent));
-            httpContext.Request.ContentType = "application/json";
-
-            var services = new Mock<IServiceProvider>(MockBehavior.Strict);
-            httpContext.RequestServices = services.Object;
-            var mockActionContextAccessor = new Mock<IScopedInstance<ActionContext>>();
-            mockActionContextAccessor.SetupGet(o => o.Value)
-                .Returns(GetActionContext());
-            services.Setup(s => s.GetService(typeof(IScopedInstance<ActionContext>)))
-               .Returns(mockActionContextAccessor.Object);
-
-            var mockActionBindingContextAccessor = new Mock<IScopedInstance<ActionBindingContext>>();
-            mockActionBindingContextAccessor.SetupGet(o => o.Value)
-                .Returns(GetActionBindingContext());
-            services.Setup(s => s.GetService(typeof(IScopedInstance<ActionBindingContext>)))
-              .Returns(mockActionBindingContextAccessor.Object);
-            return httpContext;
+            [FromBody]
+            public Address2 Address { get; set; }
         }
 
-        private static ActionContext GetActionContext(ActionDescriptor descriptor = null)
+        private class Address2
         {
-            return new ActionContext(
-                 new DefaultHttpContext(),
-                 new RouteData(),
-                 descriptor ?? GetActionDescriptor());
+            [Required]
+            public string Street { get; set; }
+
+            public int Zip { get; set; }
         }
 
-        private static ActionDescriptor GetActionDescriptor()
+        [Fact]
+        public async Task BodyBoundOnProperty_RequiredOnSubProperty()
         {
-            Func<object, int> method = foo => 1;
-            return new ControllerActionDescriptor
+            // Arrange
+            var argumentBinder = IntegrationTestHelper.GetArgumentBinder();
+            var parameter = new ParameterDescriptor()
             {
-                MethodInfo = method.Method,
-                ControllerTypeInfo = typeof(BodyBindingAndIntegrationTests).GetTypeInfo(),
-                BoundProperties = new List<ParameterDescriptor>(),
-                Parameters = new List<ParameterDescriptor>()
+                BindingInfo = new BindingInfo()
+                {
+                    BinderModelName = "CustomParameter",
+                },
+                ParameterType = typeof(Person2)
             };
+
+            var operationContext = IntegrationTestHelper.GetOperationBindingContext();
+            var httpContext = operationContext.HttpContext;
+            ConfigureHttpRequest(httpContext.Request, string.Empty);
+            var modelState = new ModelStateDictionary();
+
+            // Act
+            var model = await argumentBinder.BindModelAsync(parameter, modelState, operationContext);
+
+            // Assert
+            Assert.Equal("The Address field is required.", modelState[""].Errors.Single().ErrorMessage);
         }
 
-        private static ActionBindingContext GetActionBindingContext()
+        [Theory]
+        [InlineData("{ \"Zip\" : 123 }")]
+        public async Task BodyBoundOnTopLevelProperty_RequiredOnSubProperty(string inputText)
         {
-            var binder = new Mock<IModelBinder>();
-            binder
-                .Setup(b => b.BindModelAsync(It.IsAny<ModelBindingContext>()))
-                .Returns(Task.FromResult(
-                    result: new ModelBindingResult(model: "Hello", key: string.Empty, isModelSet: true)));
-            var options = new TestMockMvcOptionsAccessor();
-            options.Options.InputFormatters.Add(new JsonInputFormatter());
-            options.Options.InputFormatters.Add(new JsonPatchInputFormatter());
-            return new ActionBindingContext()
+            // Arrange
+            var argumentBinder = IntegrationTestHelper.GetArgumentBinder();
+            var parameter = new ParameterDescriptor()
             {
-                InputFormatters = options.Options.InputFormatters
+                BindingInfo = new BindingInfo()
+                {
+                    BinderModelName = "CustomParameter",
+                },
+                ParameterType = typeof(Person2)
             };
+
+            var operationContext = IntegrationTestHelper.GetOperationBindingContext();
+            var httpContext = operationContext.HttpContext;
+            ConfigureHttpRequest(httpContext.Request, inputText);
+            var modelState = new ModelStateDictionary();
+
+            // Act
+            var model = await argumentBinder.BindModelAsync(parameter, modelState, operationContext);
+
+            // Assert
+            // TODO: this is wrong it should take the name of the property in this case.
+            Assert.Equal("The Street field is required.", modelState["Address.Street"].Errors.Single().ErrorMessage);
         }
 
-        public DefaultControllerActionArgumentBinder GetArgumentBinder(IObjectModelValidator validator = null)
+
+        //private class Person3
+        //{
+        //    public Address2 Address { get; set; }
+        //}
+
+        //private class Address2
+        //{
+        //    public string Street { get; set; }
+
+        //    public int Zip { get; set; }
+        //}
+
+        //[Theory]
+        //[InlineData("{ \"Zip\" : 123 }")]
+        //public async Task BodyBoundOnSubProperty_RequiredOnSubSubProperty(string inputText)
+        //{
+        //    // Arrange
+        //    var argumentBinder = IntegrationTestHelper.GetArgumentBinder();
+        //    var parameter = new ParameterDescriptor()
+        //    {
+        //        BindingInfo = new BindingInfo()
+        //        {
+        //            BinderModelName = "CustomParameter",
+        //        },
+        //        ParameterType = typeof(Person2)
+        //    };
+
+        //    var operationContext = IntegrationTestHelper.GetOperationBindingContext();
+        //    var httpContext = operationContext.HttpContext;
+        //    ConfigureHttpRequest(httpContext.Request, inputText);
+        //    var modelState = new ModelStateDictionary();
+
+        //    // Act
+        //    var model = await argumentBinder.BindModelAsync(parameter, modelState, operationContext);
+
+        //    // Assert
+        //    // TODO: this is wrong it should take the name of the property in this case.
+        //    Assert.Equal("The Street field is required.", modelState["Address.Street"].Errors.Single().ErrorMessage);
+        //}
+
+        public static void ConfigureHttpRequest(HttpRequest request, string jsonContent)
         {
-            var options = new TestMockMvcOptionsAccessor();
-            options.Options.MaxModelValidationErrors = 5;
-
-            if (validator == null)
-            {
-                var mockValidator = new Mock<IObjectModelValidator>(MockBehavior.Strict);
-                mockValidator.Setup(o => o.Validate(It.IsAny<ModelValidationContext>()));
-                validator = mockValidator.Object;
-            }
-
-            return new DefaultControllerActionArgumentBinder(
-                TestModelMetadataProvider.CreateDefaultProvider(),
-                validator,
-                options);
+            request.Body = new MemoryStream(Encoding.UTF8.GetBytes(jsonContent));
+            request.ContentType = "application/json";
         }
     }
 }

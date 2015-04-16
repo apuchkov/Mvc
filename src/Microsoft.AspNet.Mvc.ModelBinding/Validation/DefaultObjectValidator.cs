@@ -187,6 +187,11 @@ namespace Microsoft.AspNet.Mvc.ModelBinding.Validation
 
                 var propertyBindingName = propertyMetadata.BinderModelName ?? propertyMetadata.PropertyName;
                 var childKey = ModelBindingHelper.CreatePropertyModelName(currentModelKey, propertyBindingName);
+                if (propertyMetadata.BindingSource == BindingSource.Body)
+                {
+                    childKey = propertyBindingName;
+                }
+
                 if (!ValidateNonVisitedNodeAndChildren(
                     childKey,
                     propertyValidationContext,
