@@ -961,7 +961,7 @@ namespace Microsoft.AspNet.Mvc.Razor
         public async Task RenderAsync_ThrowsIfLayoutIsSpecifiedWhenNotBuffered()
         {
             // Arrange
-            var expected = "A layout page cannot be rendered at '/Views/TestPath/Test.cshtml'" +
+            var expected = "Layout page '/Views/TestPath/Test.cshtml' cannot be rendered" +
                 " after 'FlushAsync' has been invoked.";
             var page = new TestableRazorPage(v =>
             {
@@ -988,7 +988,7 @@ namespace Microsoft.AspNet.Mvc.Razor
         public async Task RenderAsync_ThrowsIfFlushWasInvokedInsideRenderedSectionAndLayoutWasSet()
         {
             // Arrange
-            var expected = "A layout page cannot be rendered at '/Views/TestPath/Test.cshtml'" +
+            var expected = "Layout page '/Views/TestPath/Test.cshtml' cannot be rendered" +
                 " after 'FlushAsync' has been invoked.";
             var page = new TestableRazorPage(v =>
             {

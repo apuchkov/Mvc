@@ -117,7 +117,8 @@ namespace Microsoft.AspNet.Mvc.Razor
                                 () => page.ExecuteAsync());
 
             // Assert
-            Assert.Equal("You cannot flush while inside a writing scope. (Path: '/Views/TestPath/Test.cshtml')", ex.Message);
+            Assert.Equal("The FlushAsync operation cannot be performed while " +
+                "inside a writing scope in '/Views/TestPath/Test.cshtml'.", ex.Message);
         }
 
         [Fact]
@@ -230,6 +231,7 @@ namespace Microsoft.AspNet.Mvc.Razor
             Exception ex = null;
             var page = CreatePage(v =>
             {
+                v.Path = "/Views/TestPath/Test.cshtml";
                 ex = Assert.Throws<InvalidOperationException>(() => v.RenderSection("bar"));
             });
 
@@ -237,7 +239,8 @@ namespace Microsoft.AspNet.Mvc.Razor
             await page.ExecuteAsync();
 
             // Assert
-            Assert.Equal("RenderSection can only be called from a layout page.",
+            Assert.Equal("RenderSection invocation in '/Views/TestPath/Test.cshtml' is invalid. " +
+                "RenderSection can only be called from a layout page.",
                          ex.Message);
         }
 
@@ -247,6 +250,7 @@ namespace Microsoft.AspNet.Mvc.Razor
             // Arrange
             var page = CreatePage(v =>
             {
+                v.Path = "/Views/TestPath/Test.cshtml";
                 v.RenderSection("bar");
             });
             page.PreviousSectionWriters = new Dictionary<string, RenderAsyncDelegate>
@@ -258,18 +262,23 @@ namespace Microsoft.AspNet.Mvc.Razor
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => page.ExecuteAsync());
 
             // Assert
-            Assert.Equal("Section 'bar' is not defined.", ex.Message);
+            Assert.Equal("Section 'bar' is not defined in path '/Views/TestPath/Test.cshtml'.", ex.Message);
         }
 
         [Fact]
         public void IsSectionDefined_ThrowsIfPreviousSectionWritersIsNotRegistered()
         {
             // Arrange
-            var page = CreatePage(v => { });
+            var page = CreatePage(v => 
+            {
+                v.Path = "/Views/TestPath/Test.cshtml";
+            });
 
             // Act and Assert
+            page.ExecuteAsync();
             ExceptionAssert.Throws<InvalidOperationException>(() => page.IsSectionDefined("foo"),
-                "IsSectionDefined can only be called from a layout page.");
+                "IsSectionDefined invocation in '/Views/TestPath/Test.cshtml' is invalid." +
+                " IsSectionDefined can only be called from a layout page.");
         }
 
         [Fact]
@@ -340,7 +349,8 @@ namespace Microsoft.AspNet.Mvc.Razor
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(page.ExecuteAsync);
 
             // Assert
-            Assert.Equal("The section named 'header' has already been rendered. (Path: '/Views/TestPath/Test.cshtml')", ex.Message);
+            Assert.Equal("RenderSectionAsync invocation in '/Views/TestPath/Test.cshtml' is invalid." +
+                " The section 'header' has already been rendered.", ex.Message);
         }
 
         [Fact]
@@ -363,7 +373,8 @@ namespace Microsoft.AspNet.Mvc.Razor
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(page.ExecuteAsync);
 
             // Assert
-            Assert.Equal("The section named 'header' has already been rendered. (Path: '/Views/TestPath/Test.cshtml')", ex.Message);
+            Assert.Equal("RenderSectionAsync invocation in '/Views/TestPath/Test.cshtml' is invalid." +
+                " The section 'header' has already been rendered.", ex.Message);
         }
 
         [Fact]
@@ -386,7 +397,8 @@ namespace Microsoft.AspNet.Mvc.Razor
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(page.ExecuteAsync);
 
             // Assert
-            Assert.Equal("The section named 'header' has already been rendered. (Path: '/Views/TestPath/Test.cshtml')", ex.Message);
+            Assert.Equal("RenderSectionAsync invocation in '/Views/TestPath/Test.cshtml' is invalid." +
+                " The section 'header' has already been rendered.", ex.Message);
         }
 
         [Fact]
@@ -396,6 +408,7 @@ namespace Microsoft.AspNet.Mvc.Razor
             var expected = new HelperResult(action: null);
             var page = CreatePage(async v =>
             {
+                v.Path = "/Views/TestPath/Test.cshtml";
                 await v.RenderSectionAsync("header");
             });
 
@@ -403,7 +416,8 @@ namespace Microsoft.AspNet.Mvc.Razor
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(page.ExecuteAsync);
 
             // Assert
-            Assert.Equal("RenderSectionAsync can only be called from a layout page.", ex.Message);
+            Assert.Equal("RenderSectionAsync invocation in '/Views/TestPath/Test.cshtml' is invalid. " +
+                "RenderSectionAsync can only be called from a layout page.", ex.Message);
         }
 
         [Fact]
@@ -570,7 +584,7 @@ namespace Microsoft.AspNet.Mvc.Razor
         public async Task FlushAsync_ThrowsIfTheLayoutHasBeenSet()
         {
             // Arrange
-            var expected = "A layout page cannot be rendered at '/Views/TestPath/Test.cshtml'" +
+            var expected = "Layout page '/Views/TestPath/Test.cshtml' cannot be rendered" +
                 " after 'FlushAsync' has been invoked.";
             var writer = new Mock<TextWriter>();
             var context = CreateViewContext(writer.Object);
